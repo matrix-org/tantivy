@@ -6,6 +6,7 @@ use query::{Scorer, Weight};
 use schema::{Field, IndexRecordOption};
 use tantivy_fst::Automaton;
 use termdict::{TermDictionary, TermStreamer};
+use DocId;
 use TantivyError;
 use {Result, SkipResult};
 
@@ -58,7 +59,7 @@ where
         Ok(Box::new(ConstScorer::new(doc_bitset)))
     }
 
-    fn explain(&self, reader: &SegmentReader, doc: u32) -> Result<Explanation> {
+    fn explain(&self, reader: &SegmentReader, doc: DocId) -> Result<Explanation> {
         let mut scorer = self.scorer(reader)?;
         if scorer.skip_next(doc) == SkipResult::Reached {
             let explanation = Explanation::new("AutomatonScorer", 1.0f32);

@@ -3,13 +3,13 @@ use core::SegmentReader;
 use fieldnorm::FieldNormReader;
 use postings::SegmentPostings;
 use query::bm25::BM25Weight;
+use query::explanation::does_not_match;
 use query::Scorer;
 use query::Weight;
 use query::{EmptyScorer, Explanation};
 use schema::IndexRecordOption;
 use schema::Term;
-use DocSet;
-use TantivyError;
+use {DocId, DocSet};
 use {Result, SkipResult};
 
 pub struct PhraseWeight {
@@ -92,18 +92,14 @@ impl Weight for PhraseWeight {
         }
     }
 
-    fn explain(&self, reader: &SegmentReader, doc: u32) -> Result<Explanation> {
-        let mut scorer_opt = self.phrase_scorer(reader)?;
+    fn explain(&self, reader: &SegmentReader, doc: DocId) -> Result<Explanation> {
+        let scorer_opt = self.phrase_scorer(reader)?;
         if scorer_opt.is_none() {
-            return Err(TantivyError::InvalidArgument(
-                "Document does not match".to_string(),
-            ));
+            return Err(does_not_match(doc));
         }
         let mut scorer = scorer_opt.unwrap();
         if scorer.skip_next(doc) != SkipResult::Reached {
-            return Err(TantivyError::InvalidArgument(
-                "Document does not match".to_string(),
-            ));
+            return Err(does_not_match(doc));
         }
         let fieldnorm_reader = self.fieldnorm_reader(reader);
         let fieldnorm_id = fieldnorm_reader.fieldnorm_id(doc);

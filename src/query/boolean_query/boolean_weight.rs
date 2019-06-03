@@ -1,4 +1,5 @@
 use core::SegmentReader;
+use query::explanation::does_not_match;
 use query::score_combiner::{DoNothingCombiner, ScoreCombiner, SumWithCoordsCombiner};
 use query::term_query::TermScorer;
 use query::EmptyScorer;
@@ -10,8 +11,8 @@ use query::Union;
 use query::Weight;
 use query::{intersect_scorers, Explanation};
 use std::collections::HashMap;
-use SkipResult;
-use {Result, TantivyError};
+use Result;
+use {DocId, SkipResult};
 
 fn scorer_union<TScoreCombiner>(scorers: Vec<Box<Scorer>>) -> Box<Scorer>
 where
@@ -128,12 +129,10 @@ impl Weight for BooleanWeight {
         }
     }
 
-    fn explain(&self, reader: &SegmentReader, doc: u32) -> Result<Explanation> {
+    fn explain(&self, reader: &SegmentReader, doc: DocId) -> Result<Explanation> {
         let mut scorer = self.scorer(reader)?;
         if scorer.skip_next(doc) != SkipResult::Reached {
-            return Err(TantivyError::InvalidArgument(
-                "Document does not match".to_string(),
-            ));
+            return Err(does_not_match(doc));
         }
         if !self.scoring_enabled {
             return Ok(Explanation::new(

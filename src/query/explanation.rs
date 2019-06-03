@@ -1,4 +1,9 @@
 use std::collections::HashMap;
+use {DocId, TantivyError};
+
+pub fn does_not_match(doc: DocId) -> TantivyError {
+    TantivyError::InvalidArgument(format!("Document #({}) does not match", doc))
+}
 
 #[derive(Clone)]
 pub struct Explanation {
