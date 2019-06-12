@@ -1,4 +1,5 @@
 import json
+import datetime
 import tantivy
 
 
@@ -83,3 +84,44 @@ class TestClass(object):
 
         assert doc.len == 1
         assert not doc.is_empty
+
+    def test_order_by_collector(self):
+        builder = tantivy.SchemaBuilder()
+
+        title = builder.add_text_field("title", stored=True)
+        date_field = builder.add_unsigned_field("date", fast="single")
+
+        schema = builder.build()
+        index = tantivy.Index(schema)
+
+        writer = index.writer()
+
+        doc = tantivy.Document()
+        doc.add_text(title, "The Old Man and the Sea")
+        doc.add_unsigned(date_field, 1559913830)
+        writer.add_document(doc)
+
+        doc = tantivy.Document()
+        doc.add_text(title, "Of Mice and Men")
+        doc.add_unsigned(date_field, 1559913833)
+        writer.add_document(doc)
+
+        writer.commit()
+
+        reader = index.reader()
+        searcher = reader.searcher()
+
+        query_parser = tantivy.QueryParser.for_index(index, [title])
+        query = query_parser.parse_query("and")
+
+        top_docs = tantivy.TopDocs(10, date_field)
+
+        result = searcher.search(query, top_docs)
+        print(result)
+
+        assert len(result) == 2
+
+        _, doc_address = result[0]
+
+        searched_doc = searcher.doc(doc_address)
+        assert searched_doc.get_first(title) == "Of Mice and Men"

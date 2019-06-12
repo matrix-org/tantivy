@@ -1,10 +1,12 @@
 use pyo3::exceptions;
 use pyo3::prelude::*;
+use std::any::Any;
 
 use tantivy as tv;
 
 use crate::document::Document;
 use crate::query::Query;
+use crate::field::Field;
 
 /// Tantivy's Searcher class
 ///
@@ -30,19 +32,39 @@ impl Searcher {
     /// Raises a ValueError if there was an error with the search.
     fn search(
         &self,
+        py: Python,
         query: &Query,
         collector: &mut TopDocs,
-    ) -> PyResult<Vec<(f32, DocAddress)>> {
-        let ret = self.inner.search(&query.inner, &collector.inner);
-        match ret {
-            Ok(r) => {
-                let result: Vec<(f32, DocAddress)> = r
-                    .iter()
-                    .map(|(f, d)| (f.clone(), DocAddress::from(d)))
-                    .collect();
-                Ok(result)
+    ) -> PyResult<Vec<(PyObject, DocAddress)>> {
+        let collector = &collector.inner;
+
+        if let Some(collector) = collector.downcast_ref::<tv::collector::TopDocs>() {
+            let ret = self.inner.search(&query.inner, collector);
+            match ret {
+                Ok(r) => {
+                    let result: Vec<(PyObject, DocAddress)> = r
+                        .iter()
+                        .map(|(f, d)| (f.clone().into_object(py), DocAddress::from(d)))
+                        .collect();
+                    Ok(result)
+                }
+                Err(e) => Err(exceptions::ValueError::py_err(e.to_string()))
             }
-            Err(e) => Err(exceptions::ValueError::py_err(e.to_string())),
+
+        } else if let Some(collector) = collector.downcast_ref::<tv::collector::TopDocsByField<u64>>() {
+            let ret = self.inner.search(&query.inner, collector);
+            match ret {
+                Ok(r) => {
+                    let result: Vec<(PyObject, DocAddress)> = r
+                        .iter()
+                        .map(|(f, d)| (f.clone().into_object(py), DocAddress::from(d)))
+                        .collect();
+                    Ok(result)
+                }
+                Err(e) => return Err(exceptions::ValueError::py_err(e.to_string()))
+            }
+		} else {
+            Err(exceptions::ValueError::py_err("Invalid collector passed."))
         }
     }
 
@@ -117,18 +139,33 @@ impl Into<tv::DocAddress> for &DocAddress {
 /// Args:
 ///     limit (int, optional): The number of documents that the top scorer will
 ///         retrieve. Must be a positive integer larger than 0. Defaults to 10.
+///     order_by_field (Field, optional): A schema field that the results
+///         should be ordered by. The field must be declared as a fast field
+///         when building the schema. Note, this only works for unsigned fields
+///         for now.
 #[pyclass]
 pub(crate) struct TopDocs {
-    inner: tv::collector::TopDocs,
+    inner: Box<Any>,
 }
 
 #[pymethods]
 impl TopDocs {
     #[new]
     #[args(limit = 10)]
-    fn new(obj: &PyRawObject, limit: usize) -> PyResult<()> {
+    fn new(
+        obj: &PyRawObject,
+        limit: usize,
+        order_by_field: Option<&Field>
+    ) -> PyResult<()> {
         let top = tv::collector::TopDocs::with_limit(limit);
+
+        let top: Box<Any> = match order_by_field {
+            Some(o) => Box::<tv::collector::TopDocsByField<u64>>::new(top.order_by_field(o.inner)),
+            None => Box::new(top)
+        };
+
         obj.init(TopDocs { inner: top });
+
         Ok(())
     }
 }
