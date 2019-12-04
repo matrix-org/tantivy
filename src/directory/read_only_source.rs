@@ -1,9 +1,38 @@
 use crate::common::HasLen;
 use stable_deref_trait::{CloneStableDeref, StableDeref};
 use std::ops::Deref;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
+use std::io::{Read, Seek, Cursor};
 
-pub type BoxedData = Box<dyn Deref<Target = [u8]> + Send + Sync + 'static>;
+pub struct BoxedData(Arc<Box<dyn Deref<Target = [u8]> + Send + Sync + 'static>>);
+
+impl Deref for BoxedData {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl AsRef<[u8]> for BoxedData {
+    fn as_ref(&self) -> &[u8] {
+        &self.0.as_ref()
+    }
+}
+
+impl BoxedData {
+    pub fn new(data: Arc<Box<dyn Deref<Target = [u8]> + Send + Sync + 'static>>) -> Self {
+        BoxedData(data)
+    }
+    pub(crate) fn downgrade(&self) -> Weak<Box<dyn Deref<Target = [u8]> + Send + Sync + 'static>> {
+        Arc::downgrade(&self.0)
+    }
+}
+
+impl Clone for BoxedData {
+    fn clone(&self) -> Self {
+        BoxedData(self.0.clone())
+    }
+}
 
 /// Read object that represents files in tantivy.
 ///
@@ -12,7 +41,7 @@ pub type BoxedData = Box<dyn Deref<Target = [u8]> + Send + Sync + 'static>;
 /// Whatever happens to the directory file, the data
 /// hold by this object should never be altered or destroyed.
 pub struct ReadOnlySource {
-    data: Arc<BoxedData>,
+    data: BoxedData,
     start: usize,
     stop: usize,
 }
@@ -28,8 +57,8 @@ impl Deref for ReadOnlySource {
     }
 }
 
-impl From<Arc<BoxedData>> for ReadOnlySource {
-    fn from(data: Arc<BoxedData>) -> Self {
+impl From<BoxedData> for ReadOnlySource {
+    fn from(data: BoxedData) -> Self {
         let len = data.len();
         ReadOnlySource {
             data,
@@ -44,9 +73,9 @@ impl ReadOnlySource {
     where
         D: Deref<Target = [u8]> + Send + Sync + 'static,
     {
-        let len = data.len();
+        let len = data.as_ref().len();
         ReadOnlySource {
-            data: Arc::new(Box::new(data)),
+            data: BoxedData(Arc::new((Box::new(data)))),
             start: 0,
             stop: len,
         }
