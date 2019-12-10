@@ -3,6 +3,7 @@ use crate::postings::compression::COMPRESSION_BLOCK_SIZE;
 use crate::schema::IndexRecordOption;
 use crate::DocId;
 use owned_read::OwnedRead;
+use crate::directory::ReadOnlySource;
 
 pub struct SkipSerializer {
     buffer: Vec<u8>,
