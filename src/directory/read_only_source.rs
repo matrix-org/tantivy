@@ -80,50 +80,20 @@ impl AsRef<[u8]> for AdvancingReadOnlySource {
     }
 }
 
-// impl Deref for AdvancingReadOnlySource {
-//     type Target = ReadOnlySource;
-
-//     fn deref(&self) -> &Self::Target {
-//         &self.0
-//     }
-// }
-
-// impl DerefMut for AdvancingReadOnlySource {
-//     fn deref_mut(&mut self) -> &mut ReadOnlySource {
-//         &mut self.0
-//     }
-// }
-
-
 impl AdvancingReadOnlySource {
     pub fn empty() -> AdvancingReadOnlySource {
         AdvancingReadOnlySource(ReadOnlySource::empty())
     }
 
     pub fn advance(&mut self, clip_len: usize) {
-        // println!(
-            // "Advancing hello {:?} -> {:?} {} + {}",
-            // &self.as_slice()[self.0.start..self.0.stop],
-            // &self.as_slice()[self.0.start + clip_len..self.0.stop],
-            // "Advancing hello {} + {}",
-            // self.0.start,
-            // clip_len
-        // );
         self.0.start += clip_len;
         self.0.seek(SeekFrom::Start(0)).expect("Can't seek while advancing");
-        // println!("Succesfully advanced");
-    }
-
-    fn as_slice(&self) -> &[u8] {
-        self.0.data.get_ref()
     }
 
     pub fn split(self, addr: usize) -> (AdvancingReadOnlySource, AdvancingReadOnlySource) {
-        let left = self.0.slice(0, addr);
-        let right = self.0.slice_from(addr);
+        let (left, right) = self.0.split(addr);
         (AdvancingReadOnlySource::from(left), AdvancingReadOnlySource::from(right))
     }
-
 
     pub fn get(&mut self, idx: usize) -> u8 {
         let current_location = self.0.seek(SeekFrom::Current(0)).expect("Can't seek");
@@ -131,7 +101,6 @@ impl AdvancingReadOnlySource {
         self.0.seek(SeekFrom::Start(idx as u64)).expect("Can't seek to location");
         self.0.read_exact(&mut ret).expect("Can't read");
         self.0.seek(SeekFrom::Start(current_location)).expect("Can't seek back");
-        // println!("Getting byte at {} {:?} {:?}", idx, self.as_slice(), ret);
         ret[0]
     }
 }

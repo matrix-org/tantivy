@@ -4,6 +4,7 @@ use crate::positions::COMPRESSION_BLOCK_SIZE;
 use crate::positions::LONG_SKIP_INTERVAL;
 use crate::positions::LONG_SKIP_IN_BLOCKS;
 use crate::postings::compression::compressed_block_size;
+use crate::common::HasLen;
 /// Positions works as a long sequence of compressed block.
 /// All terms are chained one after the other.
 ///

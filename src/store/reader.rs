@@ -8,6 +8,7 @@ use crate::directory::ReadOnlySource;
 use crate::schema::Document;
 use crate::space_usage::StoreSpaceUsage;
 use crate::DocId;
+use crate::common::HasLen;
 use std::cell::RefCell;
 use std::io;
 use std::mem::size_of;

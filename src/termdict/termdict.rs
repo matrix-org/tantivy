@@ -6,6 +6,7 @@ use crate::directory::ReadOnlySource;
 use crate::postings::TermInfo;
 use crate::schema::FieldType;
 use crate::termdict::TermOrdinal;
+use crate::common::HasLen;
 use std::io::{self, Write};
 use tantivy_fst;
 use tantivy_fst::raw::Fst;
