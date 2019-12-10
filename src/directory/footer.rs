@@ -4,6 +4,7 @@ use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
 use crc32fast::Hasher;
 use std::io;
 use std::io::{Write, Read};
+use crate::common::HasLen;
 
 const COMMON_FOOTER_SIZE: usize = 4 * 5;
 

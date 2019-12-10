@@ -12,7 +12,7 @@ use crate::postings::Postings;
 use crate::postings::SkipReader;
 use crate::postings::USE_SKIP_INFO_LIMIT;
 use crate::schema::IndexRecordOption;
-use crate::directory::ReadOnlySource;
+use crate::directory::AdvancingReadOnlySource;
 use crate::DocId;
 use owned_read::OwnedRead;
 use std::cmp::Ordering;
@@ -98,7 +98,7 @@ impl SegmentPostings {
         }
         let block_segment_postings = BlockSegmentPostings::from_data(
             docs.len() as u32,
-            OwnedRead::new(buffer),
+            AdvancingReadOnlySource::from(buffer),
             IndexRecordOption::Basic,
             IndexRecordOption::Basic,
         );
@@ -317,20 +317,18 @@ pub struct BlockSegmentPostings {
 
     num_vint_docs: usize,
 
-    remaining_data: OwnedRead,
+    remaining_data: AdvancingReadOnlySource,
     skip_reader: SkipReader,
 }
 
 fn split_into_skips_and_postings(
     doc_freq: u32,
-    mut data: OwnedRead,
-) -> (Option<OwnedRead>, OwnedRead) {
+    mut data: AdvancingReadOnlySource,
+) -> (Option<AdvancingReadOnlySource>, AdvancingReadOnlySource) {
     if doc_freq >= USE_SKIP_INFO_LIMIT {
         let skip_len = VInt::deserialize(&mut data).expect("Data corrupted").0 as usize;
-        let mut postings_data = data.clone();
-        postings_data.advance(skip_len);
-        data.clip(skip_len);
-        (Some(data), postings_data)
+        let (left, right) = data.split(skip_len);
+        (Some(left), right)
     } else {
         (None, data)
     }
@@ -345,7 +343,7 @@ pub enum BlockSegmentPostingsSkipResult {
 impl BlockSegmentPostings {
     pub(crate) fn from_data(
         doc_freq: u32,
-        data: OwnedRead,
+        data: AdvancingReadOnlySource,
         record_option: IndexRecordOption,
         requested_option: IndexRecordOption,
     ) -> BlockSegmentPostings {
@@ -358,7 +356,7 @@ impl BlockSegmentPostings {
         let (skip_data_opt, postings_data) = split_into_skips_and_postings(doc_freq, data);
         let skip_reader = match skip_data_opt {
             Some(skip_data) => SkipReader::new(skip_data, record_option),
-            None => SkipReader::new(OwnedRead::new(&[][..]), record_option),
+            None => SkipReader::new(AdvancingReadOnlySource::empty(), record_option),
         };
         let doc_freq = doc_freq as usize;
         let num_vint_docs = doc_freq % COMPRESSION_BLOCK_SIZE;
@@ -384,7 +382,7 @@ impl BlockSegmentPostings {
     // # Warning
     //
     // This does not reset the positions list.
-    pub(crate) fn reset(&mut self, doc_freq: u32, postings_data: OwnedRead) {
+    pub(crate) fn reset(&mut self, doc_freq: u32, postings_data: AdvancingReadOnlySource) {
         let (skip_data_opt, postings_data) = split_into_skips_and_postings(doc_freq, postings_data);
         let num_vint_docs = (doc_freq as usize) & (COMPRESSION_BLOCK_SIZE - 1);
         self.num_vint_docs = num_vint_docs;
@@ -392,7 +390,7 @@ impl BlockSegmentPostings {
         if let Some(skip_data) = skip_data_opt {
             self.skip_reader.reset(skip_data);
         } else {
-            self.skip_reader.reset(OwnedRead::new(&[][..]))
+            self.skip_reader.reset(AdvancingReadOnlySource::empty())
         }
         self.doc_offset = 0;
         self.doc_freq = doc_freq as usize;
@@ -589,8 +587,8 @@ impl BlockSegmentPostings {
             doc_offset: 0,
             doc_freq: 0,
 
-            remaining_data: OwnedRead::new(vec![]),
-            skip_reader: SkipReader::new(OwnedRead::new(vec![]), IndexRecordOption::Basic),
+            remaining_data: AdvancingReadOnlySource::empty(),
+            skip_reader: SkipReader::new(AdvancingReadOnlySource::empty(), IndexRecordOption::Basic),
         }
     }
 }

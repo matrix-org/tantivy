@@ -4,6 +4,7 @@ use crate::directory::AntiCallToken;
 use crate::directory::WatchCallbackList;
 use crate::directory::{Directory, ReadOnlySource, WatchCallback, WatchHandle};
 use crate::directory::{TerminatingWrite, WritePtr};
+use crate::common::HasLen;
 use fail::fail_point;
 use std::collections::HashMap;
 use std::fmt;

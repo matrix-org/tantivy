@@ -1,6 +1,6 @@
 use crate::common::HasLen;
 use stable_deref_trait::{CloneStableDeref, StableDeref};
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Weak};
 use std::io::{Read, Seek, Cursor, SeekFrom};
 use std::convert::TryInto;
@@ -69,6 +69,97 @@ impl From<BoxedData> for ReadOnlySource {
             stop: len,
             pos: 0,
         }
+    }
+}
+
+pub struct AdvancingReadOnlySource(ReadOnlySource);
+
+impl AsRef<[u8]> for AdvancingReadOnlySource {
+    fn as_ref(&self) -> &[u8] {
+        &self.0.as_slice()
+    }
+}
+
+// impl Deref for AdvancingReadOnlySource {
+//     type Target = ReadOnlySource;
+
+//     fn deref(&self) -> &Self::Target {
+//         &self.0
+//     }
+// }
+
+// impl DerefMut for AdvancingReadOnlySource {
+//     fn deref_mut(&mut self) -> &mut ReadOnlySource {
+//         &mut self.0
+//     }
+// }
+
+
+impl AdvancingReadOnlySource {
+    pub fn empty() -> AdvancingReadOnlySource {
+        AdvancingReadOnlySource(ReadOnlySource::empty())
+    }
+
+    pub fn advance(&mut self, clip_len: usize) {
+        // println!(
+            // "Advancing hello {:?} -> {:?} {} + {}",
+            // &self.as_slice()[self.0.start..self.0.stop],
+            // &self.as_slice()[self.0.start + clip_len..self.0.stop],
+            // "Advancing hello {} + {}",
+            // self.0.start,
+            // clip_len
+        // );
+        self.0.start += clip_len;
+        self.0.seek(SeekFrom::Start(0)).expect("Can't seek while advancing");
+        // println!("Succesfully advanced");
+    }
+
+    fn as_slice(&self) -> &[u8] {
+        self.0.data.get_ref()
+    }
+
+    pub fn split(self, addr: usize) -> (AdvancingReadOnlySource, AdvancingReadOnlySource) {
+        let left = self.0.slice(0, addr);
+        let right = self.0.slice_from(addr);
+        (AdvancingReadOnlySource::from(left), AdvancingReadOnlySource::from(right))
+    }
+
+
+    pub fn get(&mut self, idx: usize) -> u8 {
+        let current_location = self.0.seek(SeekFrom::Current(0)).expect("Can't seek");
+        let mut ret = vec![0u8; 1];
+        self.0.seek(SeekFrom::Start(idx as u64)).expect("Can't seek to location");
+        self.0.read_exact(&mut ret).expect("Can't read");
+        self.0.seek(SeekFrom::Start(current_location)).expect("Can't seek back");
+        // println!("Getting byte at {} {:?} {:?}", idx, self.as_slice(), ret);
+        ret[0]
+    }
+}
+
+impl From<ReadOnlySource> for AdvancingReadOnlySource {
+    fn from(source: ReadOnlySource) -> AdvancingReadOnlySource {
+        AdvancingReadOnlySource(source)
+    }
+}
+
+impl From<Vec<u8>> for AdvancingReadOnlySource {
+    fn from(data: Vec<u8>) -> AdvancingReadOnlySource {
+        AdvancingReadOnlySource::from(ReadOnlySource::from(data))
+    }
+}
+
+impl Clone for AdvancingReadOnlySource {
+    fn clone(&self) -> Self {
+        AdvancingReadOnlySource(self.0.slice_from(0))
+    }
+}
+
+impl Read for AdvancingReadOnlySource {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.0.read(buf)?;
+        // println!("READ {:?}", buf);
+        self.advance(n);
+        Ok(n)
     }
 }
 
