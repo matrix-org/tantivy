@@ -178,7 +178,7 @@ impl Directory for RAMDirectory {
     }
 
     fn atomic_read(&self, path: &Path) -> Result<Vec<u8>, OpenReadError> {
-        Ok(self.open_read(path)?.as_slice().to_owned())
+        Ok(self.open_read(path)?.read_all().expect("Can't read read only source for RAM directory"))
     }
 
     fn atomic_write(&mut self, path: &Path, data: &[u8]) -> io::Result<()> {

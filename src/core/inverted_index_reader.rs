@@ -1,4 +1,5 @@
 use crate::common::BinarySerializable;
+use crate::common::HasLen;
 use crate::directory::ReadOnlySource;
 use crate::positions::PositionReader;
 use crate::postings::TermInfo;
@@ -40,9 +41,8 @@ impl InvertedIndexReader {
         positions_idx_source: ReadOnlySource,
         record_option: IndexRecordOption,
     ) -> InvertedIndexReader {
-        let total_num_tokens_data = postings_source.slice(0, 8);
-        let mut total_num_tokens_cursor = total_num_tokens_data.as_slice();
-        let total_num_tokens = u64::deserialize(&mut total_num_tokens_cursor).unwrap_or(0u64);
+        let mut total_num_tokens_data = postings_source.slice(0, 8);
+        let total_num_tokens = u64::deserialize(&mut total_num_tokens_data).unwrap_or(0u64);
         InvertedIndexReader {
             termdict,
             postings_source: postings_source.slice_from(8),

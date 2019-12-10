@@ -35,9 +35,11 @@ struct Positions {
 }
 
 impl Positions {
-    pub fn new(position_source: ReadOnlySource, skip_source: ReadOnlySource) -> Positions {
+    pub fn new(position_source: ReadOnlySource, mut skip_source: ReadOnlySource) -> Positions {
         let skip_len = skip_source.len();
-        let (body, footer) = skip_source.split(skip_len - u32::SIZE_IN_BYTES);
+        let footer: Vec<u8> = skip_source.read_after_skip(skip_len - u32::SIZE_IN_BYTES).expect("Can't read from file");
+        let body  = skip_source.slice_to(skip_len - u32::SIZE_IN_BYTES);
+
         let num_long_skips = u32::deserialize(&mut footer.as_slice()).expect("Index corrupted");
         let body_split = body.len() - u64::SIZE_IN_BYTES * (num_long_skips as usize);
         let (skip_source, long_skip_source) = body.split(body_split);
@@ -56,9 +58,8 @@ impl Positions {
         if long_skip_id == 0 {
             return 0;
         }
-        let long_skip_slice = self.long_skip_source.as_slice();
-        let mut long_skip_blocks: &[u8] = &long_skip_slice[(long_skip_id - 1) * 8..][..8];
-        u64::deserialize(&mut long_skip_blocks).expect("Index corrupted")
+        let mut long_skip_slice = self.long_skip_source.slice_from((long_skip_id -1) * 8);
+        u64::deserialize(&mut long_skip_slice).expect("Index corrupted")
     }
 
     fn reader(&self, offset: u64) -> PositionReader {

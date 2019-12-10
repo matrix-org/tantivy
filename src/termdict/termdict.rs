@@ -108,7 +108,7 @@ impl TermDictionary {
     pub fn from_source(source: &ReadOnlySource) -> Self {
         let total_len = source.len();
         let length_offset = total_len - 8;
-        let mut split_len_buffer: &[u8] = &source.as_slice()[length_offset..];
+        let mut split_len_buffer = source.slice_from(length_offset);
         let footer_size = u64::deserialize(&mut split_len_buffer)
             .expect("Deserializing 8 bytes should always work") as usize;
         let split_len = length_offset - footer_size;

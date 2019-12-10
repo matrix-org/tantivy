@@ -28,15 +28,14 @@ pub struct FastFieldReader<Item: FastValue> {
 
 impl<Item: FastValue> FastFieldReader<Item> {
     /// Opens a fast field given a source.
-    pub fn open(data: ReadOnlySource) -> Self {
+    pub fn open(mut data: ReadOnlySource) -> Self {
         let min_value: u64;
         let amplitude: u64;
         {
-            let mut cursor = data.as_slice();
             min_value =
-                u64::deserialize(&mut cursor).expect("Failed to read the min_value of fast field.");
+                u64::deserialize(&mut data).expect("Failed to read the min_value of fast field.");
             amplitude =
-                u64::deserialize(&mut cursor).expect("Failed to read the amplitude of fast field.");
+                u64::deserialize(&mut data).expect("Failed to read the amplitude of fast field.");
         }
         let max_value = min_value + amplitude;
         let num_bits = compute_num_bits(amplitude);
@@ -157,9 +156,9 @@ impl<Item: FastValue> From<Vec<Item>> for FastFieldReader<Item> {
             serializer.close().unwrap();
         }
 
-        let source = directory.open_read(path).expect("Failed to open the file");
+        let mut source = directory.open_read(path).expect("Failed to open the file");
         let composite_file =
-            CompositeFile::open(&source).expect("Failed to read the composite file");
+            CompositeFile::open(&mut source).expect("Failed to read the composite file");
         let field_source = composite_file
             .open_read(field)
             .expect("File component not found");

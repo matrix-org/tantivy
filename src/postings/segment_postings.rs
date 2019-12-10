@@ -12,6 +12,7 @@ use crate::postings::Postings;
 use crate::postings::SkipReader;
 use crate::postings::USE_SKIP_INFO_LIMIT;
 use crate::schema::IndexRecordOption;
+use crate::directory::ReadOnlySource;
 use crate::DocId;
 use owned_read::OwnedRead;
 use std::cmp::Ordering;

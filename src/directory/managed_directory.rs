@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use std::result;
 use std::sync::RwLockWriteGuard;
 use std::sync::{Arc, RwLock};
+use std::io::Read;
 
 /// Returns true iff the file is "managed".
 /// Non-managed file are not subject to garbage collection.
@@ -227,10 +228,12 @@ impl ManagedDirectory {
     /// Verify checksum of a managed file
     pub fn validate_checksum(&self, path: &Path) -> result::Result<bool, OpenReadError> {
         let reader = self.directory.open_read(path)?;
-        let (footer, data) = Footer::extract_footer(reader)
+        let (footer, mut data) = Footer::extract_footer(reader)
             .map_err(|err| IOError::with_path(path.to_path_buf(), err))?;
         let mut hasher = Hasher::new();
-        hasher.update(data.as_slice());
+        let mut read_data = Vec::new();
+        data.read_to_end(&mut read_data).expect("Can't read data for checksum");
+        hasher.update(&read_data);
         let crc = hasher.finalize();
         Ok(footer
             .versioned_footer

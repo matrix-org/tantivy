@@ -134,6 +134,7 @@ mod tests {
     use super::IndexRecordOption;
     use super::{SkipReader, SkipSerializer};
     use owned_read::OwnedRead;
+    use super::ReadOnlySource;
 
     #[test]
     fn test_skip_with_freq() {

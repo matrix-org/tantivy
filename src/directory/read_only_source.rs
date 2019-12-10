@@ -2,7 +2,9 @@ use crate::common::HasLen;
 use stable_deref_trait::{CloneStableDeref, StableDeref};
 use std::ops::Deref;
 use std::sync::{Arc, Weak};
-use std::io::{Read, Seek, Cursor};
+use std::io::{Read, Seek, Cursor, SeekFrom};
+use std::convert::TryInto;
+use std::cmp;
 
 pub struct BoxedData(Arc<Box<dyn Deref<Target = [u8]> + Send + Sync + 'static>>);
 
@@ -41,9 +43,10 @@ impl Clone for BoxedData {
 /// Whatever happens to the directory file, the data
 /// hold by this object should never be altered or destroyed.
 pub struct ReadOnlySource {
-    data: BoxedData,
+    data: Cursor<BoxedData>,
     start: usize,
     stop: usize,
+    pos: usize,
 }
 
 unsafe impl StableDeref for ReadOnlySource {}
@@ -61,9 +64,10 @@ impl From<BoxedData> for ReadOnlySource {
     fn from(data: BoxedData) -> Self {
         let len = data.len();
         ReadOnlySource {
-            data,
+            data: Cursor::new(data),
             start: 0,
             stop: len,
+            pos: 0,
         }
     }
 }
@@ -75,9 +79,10 @@ impl ReadOnlySource {
     {
         let len = data.as_ref().len();
         ReadOnlySource {
-            data: BoxedData(Arc::new((Box::new(data)))),
+            data: Cursor::new(BoxedData(Arc::new(Box::new(data)))),
             start: 0,
             stop: len,
+            pos: 0,
         }
     }
 
@@ -88,7 +93,7 @@ impl ReadOnlySource {
 
     /// Returns the data underlying the ReadOnlySource object.
     pub fn as_slice(&self) -> &[u8] {
-        &self.data[self.start..self.stop]
+        &self.data.get_ref()[self.start..self.stop]
     }
 
     /// Splits into 2 `ReadOnlySource`, at the offset given
@@ -97,6 +102,22 @@ impl ReadOnlySource {
         let left = self.slice(0, addr);
         let right = self.slice_from(addr);
         (left, right)
+    }
+
+    pub fn read_after_skip(&mut self, size: usize) -> std::io::Result<Vec<u8>> {
+        let current_location = self.seek(SeekFrom::Current(0))?;
+        self.seek(SeekFrom::Start(size.try_into().unwrap()))?;
+        let mut ret = Vec::new();
+        self.read_to_end(&mut ret)?;
+        self.seek(SeekFrom::Start(current_location))?;
+        Ok(ret)
+    }
+
+    pub fn read_all(&mut self) -> std::io::Result<Vec<u8>> {
+        let mut ret = Vec::new();
+        self.read_to_end(&mut ret)?;
+        self.seek(SeekFrom::Start(0))?;
+        Ok(ret)
     }
 
     /// Creates a ReadOnlySource that is just a
@@ -117,10 +138,16 @@ impl ReadOnlySource {
             stop
         );
         assert!(stop <= self.len());
+
+        let data: BoxedData = self.data.get_ref().clone();
+        let mut data = Cursor::new(data);
+        data.seek(SeekFrom::Start((self.start + start).try_into().expect("Bla"))).expect("HEllo");
+
         ReadOnlySource {
-            data: self.data.clone(),
+            data,
             start: self.start + start,
             stop: self.start + stop,
+            pos: self.start + start,
         }
     }
 
@@ -138,6 +165,41 @@ impl ReadOnlySource {
     /// Equivalent to `.slice(0, to_offset)`
     pub fn slice_to(&self, to_offset: usize) -> ReadOnlySource {
         self.slice(0, to_offset)
+    }
+}
+
+impl Read for ReadOnlySource {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let max = cmp::min(buf.len() , self.stop - self.pos);
+
+        let n = self.data.read(&mut buf[..max])?;
+        // println!("HELLO READING {} {} {} {} max {} read {}", self.pos, buf.len(), self.stop, self.pos + buf.len(), max, n);
+        self.pos += n;
+        Ok(n)
+    }
+}
+
+impl Seek for ReadOnlySource {
+    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+        let pos = match pos {
+            SeekFrom::Start(n) => {
+                let n = n.checked_add(self.start.try_into().unwrap()).expect("Can't add");
+                SeekFrom::Start(n)
+            },
+            SeekFrom::End(n) => {
+                let n = self.stop.checked_sub(n.wrapping_neg().try_into().unwrap()).expect("Can't substract");
+                SeekFrom::End(n.try_into().unwrap())
+            },
+            SeekFrom::Current(n) => {
+                // TODO check that n doesn't leave the bounds of our source.
+                SeekFrom::Current(n)
+            },
+        };
+
+        let pos = self.data.seek(pos)?;
+        self.pos = pos as usize;
+
+        Ok(pos)
     }
 }
 
