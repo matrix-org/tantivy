@@ -106,7 +106,6 @@ impl SkipReader {
             false
         } else {
             let doc_delta = u32::deserialize(&mut self.data).expect("Skip data corrupted");
-            println!("Adding {:?} {} + {}", self.data.as_ref(), self.doc, doc_delta);
             self.doc += doc_delta as DocId;
             self.doc_num_bits = self.data.get(0);
             match self.skip_info {
