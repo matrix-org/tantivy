@@ -96,12 +96,7 @@ impl AdvancingReadOnlySource {
     }
 
     pub fn get(&mut self, idx: usize) -> u8 {
-        let current_location = self.0.seek(SeekFrom::Current(0)).expect("Can't seek");
-        let mut ret = vec![0u8; 1];
-        self.0.seek(SeekFrom::Start(idx as u64)).expect("Can't seek to location");
-        self.0.read_exact(&mut ret).expect("Can't read");
-        self.0.seek(SeekFrom::Start(current_location)).expect("Can't seek back");
-        ret[0]
+        self.0.get(idx).expect("Can't get a byte out of the reader")
     }
 }
 
@@ -178,6 +173,15 @@ impl ReadOnlySource {
         self.read_to_end(&mut ret)?;
         self.seek(SeekFrom::Start(0))?;
         Ok(ret)
+    }
+
+    pub fn get(&mut self, idx: usize) -> std::io::Result<u8> {
+        let current_location = self.seek(SeekFrom::Current(0))?;
+        let mut ret = vec![0u8; 1];
+        self.seek(SeekFrom::Start(idx as u64))?;
+        self.read_exact(&mut ret)?;
+        self.seek(SeekFrom::Start(current_location))?;
+        Ok(ret[0])
     }
 
     /// Creates a ReadOnlySource that is just a
