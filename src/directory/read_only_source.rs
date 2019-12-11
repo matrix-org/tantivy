@@ -91,6 +91,10 @@ impl AdvancingReadOnlySource {
     pub fn read_all(&mut self) -> std::io::Result<Vec<u8>> {
         self.0.read_all()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.start == self.0.stop
+    }
 }
 
 impl From<ReadOnlySource> for AdvancingReadOnlySource {

@@ -102,7 +102,7 @@ impl SkipReader {
     }
 
     pub fn advance(&mut self) -> bool {
-        if self.data.as_ref().is_empty() {
+        if self.data.is_empty() {
             false
         } else {
             let doc_delta = u32::deserialize(&mut self.data).expect("Skip data corrupted");
