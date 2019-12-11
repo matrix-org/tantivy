@@ -5,6 +5,7 @@ use crate::positions::LONG_SKIP_INTERVAL;
 use crate::positions::LONG_SKIP_IN_BLOCKS;
 use crate::postings::compression::compressed_block_size;
 use crate::common::HasLen;
+use std::io::Read;
 /// Positions works as a long sequence of compressed block.
 /// All terms are chained one after the other.
 ///
@@ -104,7 +105,7 @@ pub struct PositionReader {
 // block is not decompressed.
 fn read_impl(
     bit_packer: BitPacker4x,
-    mut position: &[u8],
+    mut position: AdvancingReadOnlySource,
     buffer: &mut [u32; 128],
     mut inner_offset: usize,
     num_bits: &[u8],
@@ -127,9 +128,10 @@ fn read_impl(
         output_start += available_len;
         inner_offset = 0;
         let num_bits = num_bits[ahead];
-        bit_packer.decompress(position, &mut buffer[..], num_bits);
         let block_len = compressed_block_size(num_bits);
-        position = &position[block_len..];
+        let mut position_buf = vec![0u8; block_len];
+        position.read_exact(&mut position_buf).expect("Can't read position data");
+        bit_packer.decompress(&position_buf, &mut buffer[..], num_bits);
         ahead += 1;
     }
 }
@@ -146,23 +148,32 @@ impl PositionReader {
     /// Fills a buffer with the next `output.len()` integers.
     /// This does not consume / advance the stream.
     pub fn read(&mut self, output: &mut [u32]) {
-        let num_bits = self.skip_read.get(0);
-        let skip_data = self.skip_read.as_ref();
-        let position_data = self.position_read.as_ref();
+        let mut skip_read = self.skip_read.clone();
+        let mut num_bits = vec![0; 1];
+
+        skip_read.read_exact(&mut num_bits).expect("Can't read num bits");
+        let num_bits = num_bits[0];
+        let mut skip_data = Vec::new();
+        skip_read.read_to_end(&mut skip_data).expect("Can't read skip read source");
+
+        let mut position_data = self.position_read.clone();
+        let block_len = compressed_block_size(num_bits);
+        let mut position_buf = vec![0u8; block_len];
+        position_data.read_exact(&mut position_buf).expect("Can't read position data");
+
         if self.ahead != Some(0) {
             // the block currently available is not the block
             // for the current position
             self.bit_packer
-                .decompress(position_data, self.buffer.as_mut(), num_bits);
+                .decompress(&position_buf, self.buffer.as_mut(), num_bits);
             self.ahead = Some(0);
         }
-        let block_len = compressed_block_size(num_bits);
         self.ahead = Some(read_impl(
             self.bit_packer,
-            &position_data[block_len..],
+            position_data,
             self.buffer.as_mut(),
             self.inner_offset,
-            &skip_data[1..],
+            &skip_data,
             output,
         ));
     }

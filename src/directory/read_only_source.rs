@@ -87,6 +87,10 @@ impl AdvancingReadOnlySource {
     pub fn get(&mut self, idx: usize) -> u8 {
         self.0.get(idx).expect("Can't get a byte out of the reader")
     }
+
+    pub fn read_all(&mut self) -> std::io::Result<Vec<u8>> {
+        self.0.read_all()
+    }
 }
 
 impl From<ReadOnlySource> for AdvancingReadOnlySource {
