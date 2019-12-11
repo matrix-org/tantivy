@@ -198,13 +198,15 @@ impl PositionReader {
             }
         });
 
-        let skip_len_in_bits = self.skip_read.as_ref()[..num_blocks_to_advance]
+        let mut skip_len_buf = vec![0u8; num_blocks_to_advance];
+        self.skip_read.read_exact(&mut skip_len_buf).expect("Can't read skip source");
+
+        let skip_len_in_bits = skip_len_buf
             .iter()
             .map(|num_bits| *num_bits as usize)
             .sum::<usize>()
             * COMPRESSION_BLOCK_SIZE;
         let skip_len_in_bytes = skip_len_in_bits / 8;
-        self.skip_read.advance(num_blocks_to_advance);
         self.position_read.advance(skip_len_in_bytes);
     }
 }
