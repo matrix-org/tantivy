@@ -1,5 +1,5 @@
 use crate::common::{BinarySerializable, FixedSize};
-use crate::directory::ReadOnlySource;
+use crate::directory::{ReadOnlySource, AdvancingReadOnlySource};
 use crate::positions::COMPRESSION_BLOCK_SIZE;
 use crate::positions::LONG_SKIP_INTERVAL;
 use crate::positions::LONG_SKIP_IN_BLOCKS;
@@ -26,7 +26,6 @@ use crate::common::HasLen;
 /// so skipping a block without decompressing it is just a matter of advancing that many
 /// bytes.
 use bitpacking::{BitPacker, BitPacker4x};
-use owned_read::OwnedRead;
 
 struct Positions {
     bit_packer: BitPacker4x,
@@ -67,9 +66,9 @@ impl Positions {
         let long_skip_id = (offset / LONG_SKIP_INTERVAL) as usize;
         let small_skip = (offset % LONG_SKIP_INTERVAL) as usize;
         let offset_num_bytes: u64 = self.long_skip(long_skip_id);
-        let mut position_read = OwnedRead::new(self.position_source.clone());
+        let mut position_read = AdvancingReadOnlySource::from(self.position_source.clone());
         position_read.advance(offset_num_bytes as usize);
-        let mut skip_read = OwnedRead::new(self.skip_source.clone());
+        let mut skip_read = AdvancingReadOnlySource::from(self.skip_source.clone());
         skip_read.advance(long_skip_id * LONG_SKIP_IN_BLOCKS);
         let mut position_reader = PositionReader {
             bit_packer: self.bit_packer,
@@ -85,8 +84,8 @@ impl Positions {
 }
 
 pub struct PositionReader {
-    skip_read: OwnedRead,
-    position_read: OwnedRead,
+    skip_read: AdvancingReadOnlySource,
+    position_read: AdvancingReadOnlySource,
     bit_packer: BitPacker4x,
     inner_offset: usize,
     buffer: Box<[u32; 128]>,
@@ -147,9 +146,9 @@ impl PositionReader {
     /// Fills a buffer with the next `output.len()` integers.
     /// This does not consume / advance the stream.
     pub fn read(&mut self, output: &mut [u32]) {
+        let num_bits = self.skip_read.get(0);
         let skip_data = self.skip_read.as_ref();
         let position_data = self.position_read.as_ref();
-        let num_bits = self.skip_read.get(0);
         if self.ahead != Some(0) {
             // the block currently available is not the block
             // for the current position

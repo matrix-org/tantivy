@@ -88,8 +88,8 @@ where
     }
 }
 
-fn open_fst_index(source: ReadOnlySource) -> tantivy_fst::Map<ReadOnlySource> {
-    let fst = Fst::new(source).expect("FST data is corrupted");
+fn open_fst_index(mut source: ReadOnlySource) -> tantivy_fst::Map<Vec<u8>> {
+    let fst = Fst::new(source.read_all().expect("Can't read source")).expect("FST data is corrupted");
     tantivy_fst::Map::from(fst)
 }
 
@@ -100,7 +100,7 @@ fn open_fst_index(source: ReadOnlySource) -> tantivy_fst::Map<ReadOnlySource> {
 /// respective `TermOrdinal`. The `TermInfoStore` then makes it
 /// possible to fetch the associated `TermInfo`.
 pub struct TermDictionary {
-    fst_index: tantivy_fst::Map<ReadOnlySource>,
+    fst_index: tantivy_fst::Map<Vec<u8>>,
     term_info_store: TermInfoStore,
 }
 
