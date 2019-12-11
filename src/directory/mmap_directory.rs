@@ -20,6 +20,7 @@ use crate::directory::WatchCallback;
 use crate::directory::WatchCallbackList;
 use crate::directory::WatchHandle;
 use crate::directory::{TerminatingWrite, WritePtr};
+use crate::common::HasLen;
 use atomicwrites;
 use memmap::Mmap;
 use std::collections::HashMap;

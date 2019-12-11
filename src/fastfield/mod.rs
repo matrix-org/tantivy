@@ -37,6 +37,7 @@ use crate::common;
 use crate::schema::Cardinality;
 use crate::schema::FieldType;
 use crate::schema::Value;
+use crate::common::HasLen;
 
 mod bytes;
 mod delete;

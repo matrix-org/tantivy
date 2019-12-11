@@ -49,17 +49,6 @@ pub struct ReadOnlySource {
     pos: usize,
 }
 
-unsafe impl StableDeref for ReadOnlySource {}
-unsafe impl CloneStableDeref for ReadOnlySource {}
-
-impl Deref for ReadOnlySource {
-    type Target = [u8];
-
-    fn deref(&self) -> &[u8] {
-        self.as_slice()
-    }
-}
-
 impl From<BoxedData> for ReadOnlySource {
     fn from(data: BoxedData) -> Self {
         let len = data.len();
