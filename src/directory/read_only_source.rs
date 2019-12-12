@@ -92,6 +92,13 @@ impl AdvancingReadOnlySource {
         self.0.read_all()
     }
 
+    pub fn read_without_advancing(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let current_location = self.0.seek(SeekFrom::Current(0))?;
+        let n = self.0.read(buf)?;
+        self.0.seek(SeekFrom::Start(current_location))?;
+        Ok(n)
+    }
+
     pub fn is_empty(&self) -> bool {
         self.0.start == self.0.stop
     }
