@@ -63,12 +63,6 @@ impl From<BoxedData> for ReadOnlySource {
 
 pub struct AdvancingReadOnlySource(ReadOnlySource);
 
-impl AsRef<[u8]> for AdvancingReadOnlySource {
-    fn as_ref(&self) -> &[u8] {
-        &self.0.as_slice()
-    }
-}
-
 impl AdvancingReadOnlySource {
     pub fn empty() -> AdvancingReadOnlySource {
         AdvancingReadOnlySource(ReadOnlySource::empty())
