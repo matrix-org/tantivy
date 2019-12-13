@@ -37,8 +37,8 @@ impl StoreReader {
         }
     }
 
-    pub(crate) fn block_index(&self) -> SkipList<'_, u64> {
-        SkipList::from(self.offset_index_source.as_slice())
+    pub(crate) fn block_index(&self) -> SkipList<u64> {
+        SkipList::from(self.offset_index_source.clone())
     }
 
     fn block_offset(&self, doc_id: DocId) -> (DocId, u64) {
