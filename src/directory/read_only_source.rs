@@ -1,10 +1,10 @@
 use crate::common::HasLen;
 use stable_deref_trait::{CloneStableDeref, StableDeref};
+use std::cmp;
+use std::convert::TryInto;
+use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Weak};
-use std::io::{Read, Seek, Cursor, SeekFrom};
-use std::convert::TryInto;
-use std::cmp;
 
 pub struct InnerBoxedData(Arc<Box<dyn Deref<Target = [u8]> + Send + Sync + 'static>>);
 
@@ -64,7 +64,6 @@ impl Deref for BoxedData {
     }
 }
 
-
 impl Clone for BoxedData {
     fn clone(&self) -> Self {
         BoxedData(Cursor::new(self.0.get_ref().clone()))
@@ -123,12 +122,17 @@ impl AdvancingReadOnlySource {
 
     pub fn advance(&mut self, clip_len: usize) {
         self.0.start += clip_len;
-        self.0.seek(SeekFrom::Start(0)).expect("Can't seek while advancing");
+        self.0
+            .seek(SeekFrom::Start(0))
+            .expect("Can't seek while advancing");
     }
 
     pub fn split(self, addr: usize) -> (AdvancingReadOnlySource, AdvancingReadOnlySource) {
         let (left, right) = self.0.split(addr);
-        (AdvancingReadOnlySource::from(left), AdvancingReadOnlySource::from(right))
+        (
+            AdvancingReadOnlySource::from(left),
+            AdvancingReadOnlySource::from(right),
+        )
     }
 
     pub fn get(&mut self, idx: usize) -> u8 {
@@ -180,7 +184,7 @@ impl Read for AdvancingReadOnlySource {
 impl ReadOnlySource {
     pub(crate) fn new<D>(data: D) -> ReadOnlySource
     where
-        D: ReadOnlyData + 'static
+        D: ReadOnlyData + 'static,
     {
         let len = data.len();
         ReadOnlySource {
@@ -254,7 +258,12 @@ impl ReadOnlySource {
         assert!(stop <= self.len());
 
         let mut data = self.data.snapshot();
-        data.seek(SeekFrom::Start((self.start + start).try_into().expect("Bla"))).expect("HEllo");
+        data.seek(SeekFrom::Start(
+            (self.start + start)
+                .try_into()
+                .expect("Can't convert seek start position while slicing"),
+        ))
+        .expect("Can't seek while slicing");
 
         ReadOnlySource {
             data,
@@ -283,7 +292,7 @@ impl ReadOnlySource {
 
 impl Read for ReadOnlySource {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let max = cmp::min(buf.len() , self.stop - self.pos);
+        let max = cmp::min(buf.len(), self.stop - self.pos);
 
         let n = self.data.read(&mut buf[..max])?;
         self.pos += n;
@@ -293,22 +302,37 @@ impl Read for ReadOnlySource {
 
 impl Seek for ReadOnlySource {
     fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
-        let pos = match pos {
+        let seek = match pos {
             SeekFrom::Start(n) => {
-                let n = n.checked_add(self.start.try_into().unwrap()).expect("Can't add");
+                let n = n.checked_add(self.start as u64).ok_or(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "invalid seek to a negative or overflowing position",
+                ))?;
                 SeekFrom::Start(n)
-            },
+            }
             SeekFrom::End(n) => {
-                let n = self.stop.checked_sub(n.wrapping_neg().try_into().unwrap()).expect("Can't substract");
-                SeekFrom::End(n.try_into().unwrap())
-            },
-            SeekFrom::Current(n) => {
-                assert!(n <= self.stop as i64, "Requested seek beyond bounds {} >= {}", n, self.stop);
-                SeekFrom::Current(n)
-            },
+                if n > 0 {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "invalid seek beyond the source",
+                    ));
+                } else if n == 0 {
+                    SeekFrom::End(n)
+                } else {
+                    let true_end = self.data.seek(SeekFrom::End(0))?;
+                    let offset = true_end - self.stop as u64;
+                    let offset: i64 = n.checked_add(offset as i64).ok_or(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "invalid seek to a negative or overflowing position",
+                    ))?;
+                    SeekFrom::End(offset)
+                }
+            }
+
+            SeekFrom::Current(n) => SeekFrom::Current(n),
         };
 
-        let pos = self.data.seek(pos)?;
+        let pos = self.data.seek(seek)?;
         self.pos = pos as usize;
 
         Ok(pos)
