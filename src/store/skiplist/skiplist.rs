@@ -3,7 +3,6 @@ use crate::directory::{ReadOnlySource, AdvancingReadOnlySource};
 use std::cmp::max;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use crate::common::HasLen;
 use std::io::{Seek, SeekFrom};
 
 struct Layer<T> {

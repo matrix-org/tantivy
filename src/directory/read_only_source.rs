@@ -6,33 +6,86 @@ use std::io::{Read, Seek, Cursor, SeekFrom};
 use std::convert::TryInto;
 use std::cmp;
 
-pub struct BoxedData(Arc<Box<dyn Deref<Target = [u8]> + Send + Sync + 'static>>);
+pub struct InnerBoxedData(Arc<Box<dyn Deref<Target = [u8]> + Send + Sync + 'static>>);
 
-impl Deref for BoxedData {
+pub struct BoxedData(Cursor<InnerBoxedData>);
+
+impl Deref for InnerBoxedData {
     type Target = [u8];
     fn deref(&self) -> &[u8] {
         &self.0
     }
 }
 
-impl AsRef<[u8]> for BoxedData {
+impl AsRef<[u8]> for InnerBoxedData {
     fn as_ref(&self) -> &[u8] {
         &self.0.as_ref()
     }
 }
 
-impl BoxedData {
+impl InnerBoxedData {
     pub fn new(data: Arc<Box<dyn Deref<Target = [u8]> + Send + Sync + 'static>>) -> Self {
-        BoxedData(data)
+        InnerBoxedData(data)
     }
+
     pub(crate) fn downgrade(&self) -> Weak<Box<dyn Deref<Target = [u8]> + Send + Sync + 'static>> {
         Arc::downgrade(&self.0)
     }
 }
 
+impl Clone for InnerBoxedData {
+    fn clone(&self) -> Self {
+        InnerBoxedData(self.0.clone())
+    }
+}
+
+impl BoxedData {
+    pub fn new(data: Arc<Box<dyn Deref<Target = [u8]> + Send + Sync + 'static>>) -> Self {
+        BoxedData(Cursor::new(InnerBoxedData::new(data)))
+    }
+}
+
+impl Read for BoxedData {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.0.read(buf)
+    }
+}
+
+impl Seek for BoxedData {
+    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+        self.0.seek(pos)
+    }
+}
+
+impl Deref for BoxedData {
+    type Target = InnerBoxedData;
+    fn deref(&self) -> &InnerBoxedData {
+        self.0.get_ref()
+    }
+}
+
+
 impl Clone for BoxedData {
     fn clone(&self) -> Self {
-        BoxedData(self.0.clone())
+        BoxedData(Cursor::new(self.0.get_ref().clone()))
+    }
+}
+
+impl HasLen for BoxedData {
+    fn len(&self) -> usize {
+        self.0.get_ref().len()
+    }
+}
+
+// pub type ReadOnlyData = Box<dyn Read + Sync + Send + Clone + 'static>;
+
+pub trait ReadOnlyData: Read + Seek + HasLen + Sync + Send {
+    fn snapshot(&self) -> Box<dyn ReadOnlyData>;
+}
+
+impl ReadOnlyData for BoxedData {
+    fn snapshot(&self) -> Box<dyn ReadOnlyData> {
+        Box::new(self.clone())
     }
 }
 
@@ -43,7 +96,7 @@ impl Clone for BoxedData {
 /// Whatever happens to the directory file, the data
 /// hold by this object should never be altered or destroyed.
 pub struct ReadOnlySource {
-    data: Cursor<BoxedData>,
+    data: Box<dyn ReadOnlyData>,
     start: usize,
     stop: usize,
     pos: usize,
@@ -53,7 +106,7 @@ impl From<BoxedData> for ReadOnlySource {
     fn from(data: BoxedData) -> Self {
         let len = data.len();
         ReadOnlySource {
-            data: Cursor::new(data),
+            data: Box::new(data),
             start: 0,
             stop: len,
             pos: 0,
@@ -119,7 +172,6 @@ impl Clone for AdvancingReadOnlySource {
 impl Read for AdvancingReadOnlySource {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let n = self.0.read(buf)?;
-        // println!("READ {:?}", buf);
         self.advance(n);
         Ok(n)
     }
@@ -128,11 +180,11 @@ impl Read for AdvancingReadOnlySource {
 impl ReadOnlySource {
     pub(crate) fn new<D>(data: D) -> ReadOnlySource
     where
-        D: Deref<Target = [u8]> + Send + Sync + 'static,
+        D: ReadOnlyData + 'static
     {
-        let len = data.as_ref().len();
+        let len = data.len();
         ReadOnlySource {
-            data: Cursor::new(BoxedData(Arc::new(Box::new(data)))),
+            data: Box::new(data),
             start: 0,
             stop: len,
             pos: 0,
@@ -141,13 +193,13 @@ impl ReadOnlySource {
 
     /// Creates an empty ReadOnlySource
     pub fn empty() -> ReadOnlySource {
-        ReadOnlySource::new(&[][..])
+        ReadOnlySource::from(Vec::new())
     }
 
-    /// Returns the data underlying the ReadOnlySource object.
-    pub fn as_slice(&self) -> &[u8] {
-        &self.data.get_ref()[self.start..self.stop]
-    }
+    // /// Returns the data underlying the ReadOnlySource object.
+    // pub fn as_slice(&self) -> &[u8] {
+    //     &self.data.get_ref()[self.start..self.stop]
+    // }
 
     /// Splits into 2 `ReadOnlySource`, at the offset given
     /// as an argument.
@@ -201,8 +253,7 @@ impl ReadOnlySource {
         );
         assert!(stop <= self.len());
 
-        let data: BoxedData = self.data.get_ref().clone();
-        let mut data = Cursor::new(data);
+        let mut data = self.data.snapshot();
         data.seek(SeekFrom::Start((self.start + start).try_into().expect("Bla"))).expect("HEllo");
 
         ReadOnlySource {
@@ -235,7 +286,6 @@ impl Read for ReadOnlySource {
         let max = cmp::min(buf.len() , self.stop - self.pos);
 
         let n = self.data.read(&mut buf[..max])?;
-        // println!("HELLO READING {} {} {} {} max {} read {}", self.pos, buf.len(), self.stop, self.pos + buf.len(), max, n);
         self.pos += n;
         Ok(n)
     }
@@ -253,7 +303,7 @@ impl Seek for ReadOnlySource {
                 SeekFrom::End(n.try_into().unwrap())
             },
             SeekFrom::Current(n) => {
-                // TODO check that n doesn't leave the bounds of our source.
+                assert!(n <= self.stop as i64, "Requested seek beyond bounds {} >= {}", n, self.stop);
                 SeekFrom::Current(n)
             },
         };
@@ -279,6 +329,6 @@ impl Clone for ReadOnlySource {
 
 impl From<Vec<u8>> for ReadOnlySource {
     fn from(data: Vec<u8>) -> ReadOnlySource {
-        ReadOnlySource::new(data)
+        ReadOnlySource::new(BoxedData::new(Arc::new(Box::new(data))))
     }
 }

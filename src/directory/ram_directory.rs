@@ -87,7 +87,7 @@ struct InnerDirectory {
 
 impl InnerDirectory {
     fn write(&mut self, path: PathBuf, data: &[u8]) -> bool {
-        let data = ReadOnlySource::new(Vec::from(data));
+        let data = ReadOnlySource::from(Vec::from(data));
         self.fs.insert(path, data).is_some()
     }
 
