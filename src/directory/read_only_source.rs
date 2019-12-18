@@ -1,9 +1,8 @@
 use crate::common::HasLen;
-use stable_deref_trait::{CloneStableDeref, StableDeref};
 use std::cmp;
 use std::convert::TryInto;
 use std::io::{Cursor, Read, Seek, SeekFrom};
-use std::ops::{Deref, DerefMut};
+use std::ops::{Deref};
 use std::sync::{Arc, Weak};
 
 pub struct InnerBoxedData(Arc<Box<dyn Deref<Target = [u8]> + Send + Sync + 'static>>);
@@ -83,6 +82,12 @@ pub trait ReadOnlyData: Read + Seek + HasLen + Sync + Send {
 }
 
 impl ReadOnlyData for BoxedData {
+    fn snapshot(&self) -> Box<dyn ReadOnlyData> {
+        Box::new(self.clone())
+    }
+}
+
+impl ReadOnlyData for ReadOnlySource {
     fn snapshot(&self) -> Box<dyn ReadOnlyData> {
         Box::new(self.clone())
     }
@@ -182,7 +187,7 @@ impl Read for AdvancingReadOnlySource {
 }
 
 impl ReadOnlySource {
-    pub(crate) fn new<D>(data: D) -> ReadOnlySource
+    pub fn new<D>(data: D) -> ReadOnlySource
     where
         D: ReadOnlyData + 'static,
     {
@@ -199,11 +204,6 @@ impl ReadOnlySource {
     pub fn empty() -> ReadOnlySource {
         ReadOnlySource::from(Vec::new())
     }
-
-    // /// Returns the data underlying the ReadOnlySource object.
-    // pub fn as_slice(&self) -> &[u8] {
-    //     &self.data.get_ref()[self.start..self.stop]
-    // }
 
     /// Splits into 2 `ReadOnlySource`, at the offset given
     /// as an argument.
@@ -258,7 +258,7 @@ impl ReadOnlySource {
         assert!(stop <= self.len());
 
         let mut data = self.data.snapshot();
-        data.seek(SeekFrom::Start(
+        let pos = data.seek(SeekFrom::Start(
             (self.start + start)
                 .try_into()
                 .expect("Can't convert seek start position while slicing"),
@@ -269,7 +269,7 @@ impl ReadOnlySource {
             data,
             start: self.start + start,
             stop: self.start + stop,
-            pos: self.start + start,
+            pos: pos as usize,
         }
     }
 
@@ -304,7 +304,7 @@ impl Seek for ReadOnlySource {
     fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
         let seek = match pos {
             SeekFrom::Start(n) => {
-                let n = n.checked_add(self.start as u64).ok_or(std::io::Error::new(
+                let n = n.checked_add(self.start as u64).ok_or_else(|| std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
                     "invalid seek to a negative or overflowing position",
                 ))?;
@@ -321,13 +321,13 @@ impl Seek for ReadOnlySource {
                 } else {
                     let true_end = self.data.seek(SeekFrom::End(0))?;
                     let offset = true_end - self.stop as u64;
-                    let offset: i64 = n.checked_add(offset as i64).ok_or(std::io::Error::new(
+                    let offset: i64 = n.checked_add(offset as i64).ok_or_else(|| std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
                         "invalid seek to a negative or overflowing position",
                     ))?;
                     SeekFrom::End(offset)
                 }
-            }
+            },
 
             SeekFrom::Current(n) => SeekFrom::Current(n),
         };
@@ -335,7 +335,7 @@ impl Seek for ReadOnlySource {
         let pos = self.data.seek(seek)?;
         self.pos = pos as usize;
 
-        Ok(pos)
+        Ok(pos - self.start as u64)
     }
 }
 
