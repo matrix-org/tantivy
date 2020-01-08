@@ -503,15 +503,10 @@ impl BlockSegmentPostings {
 
         // we are now on the last, incomplete, variable encoded block.
         if self.num_vint_docs > 0 {
-            // TODO is there a better way to know how much data the decoder
-            // needs.
-            let mut data_buf = vec![0u8; self.num_vint_docs * 2];
-            self.remaining_data
-                .read_without_advancing(&mut data_buf)
-                .expect("Can't read remaining data");
+            let data = self.remaining_data.clone().read_all().expect("Can't read data");
 
             let num_compressed_bytes = self.doc_decoder.uncompress_vint_sorted(
-                &data_buf,
+                &data,
                 self.doc_offset,
                 self.num_vint_docs,
             );
@@ -519,14 +514,9 @@ impl BlockSegmentPostings {
             match self.freq_reading_option {
                 FreqReadingOption::NoFreq | FreqReadingOption::SkipFreq => {}
                 FreqReadingOption::ReadFreq => {
-                    // TODO is there a better way to know how much data the decoder
-                    // needs.
-                    let mut data_buf = vec![0u8; self.num_vint_docs * 2];
-                    self.remaining_data
-                        .read_without_advancing(&mut data_buf)
-                        .expect("Can't read remaining data");
+                    let data = self.remaining_data.clone().read_all().expect("Can't read data");
                     self.freq_decoder
-                        .uncompress_vint_unsorted(&data_buf, self.num_vint_docs);
+                        .uncompress_vint_unsorted(&data, self.num_vint_docs);
                 }
             }
             self.num_vint_docs = 0;
@@ -581,15 +571,10 @@ impl BlockSegmentPostings {
             self.doc_offset = self.doc_decoder.output(COMPRESSION_BLOCK_SIZE - 1);
             true
         } else if self.num_vint_docs > 0 {
-            // TODO is there a better way to know how much data the decoder
-            // needs.
-            let mut data_buf = vec![0u8; self.num_vint_docs * 2];
-            self.remaining_data
-                .read_without_advancing(&mut data_buf)
-                .expect("Can't read remaining data");
+            let data = self.remaining_data.clone().read_all().expect("Can't read data");
 
             let num_compressed_bytes = self.doc_decoder.uncompress_vint_sorted(
-                &data_buf,
+                &data,
                 self.doc_offset,
                 self.num_vint_docs,
             );
@@ -597,14 +582,9 @@ impl BlockSegmentPostings {
             match self.freq_reading_option {
                 FreqReadingOption::NoFreq | FreqReadingOption::SkipFreq => {}
                 FreqReadingOption::ReadFreq => {
-                    // TODO is there a better way to know how much data the decoder
-                    // needs.
-                    let mut data_buf = vec![0u8; self.num_vint_docs * 2];
-                    self.remaining_data
-                        .read_without_advancing(&mut data_buf)
-                        .expect("Can't read remaining data");
+                    let data = self.remaining_data.clone().read_all().expect("Can't read data");
                     self.freq_decoder
-                        .uncompress_vint_unsorted(&data_buf, self.num_vint_docs);
+                        .uncompress_vint_unsorted(&data, self.num_vint_docs);
                 }
             }
             self.num_vint_docs = 0;
